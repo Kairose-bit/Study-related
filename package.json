@@ -1,0 +1,12 @@
+{
+  "name": "nexus-ai-study-hub",
+  "version": "1.0.0",
+  "description": "Hackathon Focus App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
