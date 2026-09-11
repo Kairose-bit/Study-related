@@ -1,370 +1,44 @@
-<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexus AI Study Hub</title>
-  <link rel="stylesheet" href="Part_5.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f4f1ea">
+    <title>Focus Desk</title>
+    <link rel="stylesheet" href="Part_5.css">
 </head>
 <body>
-  <!-- BACKGROUND GLOW EFFECTS -->
-  <div class="bg-glow blob-1"></div>
-  <div class="bg-glow blob-2"></div>
+    <main id="dashboard-view" class="app-container">
+        <aside class="sidebar">
+            <div class="brand-lockup">
+                <span class="brand-mark">FD</span>
+                <div><strong>Focus Desk</strong><span>Study with intention</span></div>
+            </div>
+            <div class="sidebar-intro"><span class="eyebrow">Your workspace</span><h2>Make room for deep work.</h2></div>
+            <nav class="sidebar-nav" aria-label="Study history">
+                <div id="self-study-section" class="sidebar-group hidden"><div class="group-heading"><span>Self-study</span><span class="group-dot"></span></div><div id="self-study-log" class="history-list"></div></div>
+                <div id="ai-tutor-section" class="sidebar-group hidden"><div class="group-heading"><span>Tutor sessions</span><span class="group-dot coral"></span></div><div id="ai-tutor-log" class="history-list"></div></div>
+                <div class="empty-history"><span class="empty-icon">+</span><p>Your completed sessions will appear here.</p></div>
+            </nav>
+            <div class="sidebar-footer"><span class="status-dot"></span><span>Local and private</span></div>
+        </aside>
+        <section class="main-content">
+            <header class="page-header"><div><span class="eyebrow">Good to see you</span><h1>What will you learn today?</h1><p class="lede">Choose a mode and settle into a focused session.</p></div><div class="date-chip">Focus mode <span class="status-dot"></span></div></header>
+            <section class="hero-strip"><div><span class="eyebrow light">Today's invitation</span><h2>Small progress is still progress.</h2><p>Start with one clear intention. Let the momentum follow.</p></div><div class="hero-number">01</div></section>
+            <section class="workflow-grid" aria-label="Study modes">
+                <button class="mode-card self-card" onclick="startSelfStudy()"><span class="card-kicker">01 / Quiet room</span><span class="mode-icon">25</span><span class="mode-copy"><strong>Self-study sprint</strong><small>A distraction-free timer for one meaningful task.</small></span><span class="card-arrow">-&gt;</span></button>
+                <button class="mode-card tutor-card" onclick="startAITutor()"><span class="card-kicker">02 / Ask freely</span><span class="mode-icon">?</span><span class="mode-copy"><strong>AI tutor desk</strong><small>Bring your notes and turn questions into clarity.</small></span><span class="card-arrow">-&gt;</span></button>
+            </section>
+            <section class="principles"><span class="eyebrow">A better session</span><div class="principle-row"><div><b>01</b><span>Name the task</span></div><div><b>02</b><span>Protect the time</span></div><div><b>03</b><span>Reflect once done</span></div></div></section>
+        </section>
+    </main>
 
-  <!-- SCREEN 1: FULLSCREEN MODE SELECTION -->
-  <div id="landingScreen" class="screen landing-screen">
-    <div class="landing-content">
-      <div class="brand-badge">✨ Hackathon Edition</div>
-      <h1 class="hero-title">How would you like to study today?</h1>
-      <p class="hero-subtitle">Select your workflow to optimize focus, learning, and active recall retention.</p>
+    <section id="study-view" class="active-view hidden"><div class="session-topbar"><span class="brand-mark small">FD</span><span>Self-study sprint</span><button class="quiet-button" onclick="endSession('Self-Study')">Exit session</button></div><div class="timer-shell"><span class="eyebrow light">One thing at a time</span><div id="timer-display">25:00</div><p>Silence the noise. Keep your attention here.</p><div class="timer-controls"><button id="pause-btn" class="primary-button" onclick="pauseTimer()">Start</button><button class="outline-button" onclick="adjustTimer()">Adjust time</button></div><button id="emergency-exit" class="emergency-button hidden" onclick="endSession('Self-Study')">End session now</button></div></section>
 
-      <div class="mode-cards-grid">
-        <!-- Self-Study Card -->
-        <div class="mode-card" onclick="selectMode('self')">
-          <div class="mode-icon">⏱️</div>
-          <div class="mode-tag">Deep Work</div>
-          <h2>Self-Study Mode</h2>
-          <p>Set a Pomodoro focus sprint with Screen Lock protection. Complete your study session first, then trigger AI active recall testing based on your progress.</p>
-          <div class="mode-features">
-            <span>✓ Lock Screen Protection</span>
-            <span>✓ Distraction Tracking</span>
-            <span>✓ Post-Session Notes Quiz</span>
-          </div>
-          <button class="select-btn">Launch Sprint →</button>
-        </div>
+    <section id="ai-view" class="active-view hidden"><div class="session-topbar"><span class="brand-mark small">FD</span><span>AI tutor desk</span><button class="quiet-button" onclick="openPostSessionModal()">Finish session</button></div><div class="tutor-layout"><div class="tutor-heading"><span class="eyebrow light">Bring your curiosity</span><h2>Ask a better question.</h2><p>Your local tutor keeps the conversation close to your notes.</p></div><div id="file-drop-area" class="drop-zone">Drop a study file here or <label class="file-browse-btn">browse files<input type="file" id="file-input" hidden onchange="handleFileSelect(this)"></label></div><div id="ai-chat-box" class="chat-box"><div class="welcome-message"><span class="mode-icon">?</span><p>What are you working through today?</p></div></div><div class="input-area"><input type="text" id="ai-prompt" placeholder="Ask your tutor anything..." onkeydown="if(event.key === 'Enter') askOllama()"><button class="primary-button" onclick="askOllama()">Send</button></div></div></section>
 
-        <!-- AI Tutor Card -->
-        <div class="mode-card highlight" onclick="selectMode('ai')">
-          <div class="mode-icon">🤖</div>
-          <div class="mode-tag ai-tag">Interactive Learning</div>
-          <h2>AI Tutor Mode</h2>
-          <p>Learn topics instantly with an AI assistant. Upload reference notes to generate bullet lessons, practice MCQs, and custom quizzes.</p>
-          <div class="mode-features">
-            <span>✓ Instant Explanations</span>
-            <span>✓ Upload Any File</span>
-            <span>✓ Auto-Generated MCQs</span>
-          </div>
-          <button class="select-btn">Start AI Lesson →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SCREEN 2: MAIN DASHBOARD -->
-  <div id="appScreen" class="screen app-screen hidden">
-    <!-- Top Nav Bar -->
-    <header class="top-nav">
-      <button class="back-btn" onclick="backToLanding()">← Switch Mode</button>
-      
-      <div class="nav-controls">
-        <label class="sound-toggle">
-          <input type="checkbox" id="soundToggle" checked>
-          <span>🔔 Alert</span>
-        </label>
-        <div class="volume-box">
-          <span>🔊</span>
-          <input type="range" id="volumeControl" min="0" max="1" step="0.05" value="0.2">
-        </div>
-      </div>
-    </header>
-
-    <!-- VIEW A: SELF-STUDY MODE -->
-    <div id="selfStudyView" class="view-container hidden">
-      <div class="card timer-card">
-        <div class="card-header">
-          <span class="badge">Mode: Self-Study</span>
-          <h2>Focus Sprint</h2>
-        </div>
-
-        <div class="input-field-wrap">
-          <label class="input-label">Subject / Subtopic</label>
-          <input type="text" id="subjectInput" placeholder="e.g., Physics: Rotational Dynamics & Torque">
-        </div>
-
-        <div class="inputs-row">
-          <div class="time-field">
-            <input type="number" id="hrsInput" min="0" value="0" placeholder="00">
-            <span class="field-tag">HRS</span>
-          </div>
-          <span class="colon">:</span>
-          <div class="time-field">
-            <input type="number" id="minsInput" min="0" max="59" value="25" placeholder="00">
-            <span class="field-tag">MIN</span>
-          </div>
-          <span class="colon">:</span>
-          <div class="time-field">
-            <input type="number" id="secsInput" min="0" max="59" value="0" placeholder="00">
-            <span class="field-tag">SEC</span>
-          </div>
-        </div>
-        
-        <h1 id="timerDisplay">25:00</h1>
-        
-        <div class="btn-group">
-          <button id="startBtn" onclick="initiateStart()">Start Sprint</button>
-          <button id="pauseBtn" onclick="pauseTimer()">Pause</button>
-          <button id="skipBtn" class="skip-btn" onclick="skipTimer()" title="Hackathon Skip Demo">⏭️ Skip</button>
-          <button id="resetBtn" onclick="resetTimer()">Reset</button>
-        </div>
-      </div>
-
-      <!-- Notes Attachment & AI Quiz (UNLOCKED ONLY AFTER TIMER END / SKIP) -->
-      <div id="postSessionCard" class="card ai-card hidden">
-        <div class="card-header">
-          <span class="badge success-badge">🎉 Sprint Finished</span>
-          <h3>Active Recall & Note Assessment</h3>
-          <p class="sub-text">Attach notes from your study sprint to generate a personalized evaluation quiz.</p>
-        </div>
-
-        <div class="file-upload-wrap">
-          <label for="notesFileInputSelf" class="file-btn">📎 Attach Study Notes (Any File Format)</label>
-          <input type="file" id="notesFileInputSelf" accept="*">
-          <span id="fileNameDisplaySelf">No file attached</span>
-        </div>
-
-        <button class="action-btn" onclick="fetchSelfStudyRecall()">
-          ✨ Generate Recall Quiz
-        </button>
-
-        <div id="aiQuizOutputSelf" class="output-box">
-          Attach your study file above or click Generate to test memory retention on what you studied...
-        </div>
-      </div>
-    </div>
-
-    <!-- VIEW B: AI TUTOR MODE -->
-    <div id="aiTutorView" class="view-container hidden">
-      <div class="card ai-card">
-        <div class="card-header">
-          <span class="badge ai-badge">Mode: AI Tutor</span>
-          <h2>Learn Concept & Practice MCQs</h2>
-          <p class="sub-text">Input a topic or upload source notes to receive structured explanations and practice questions immediately.</p>
-        </div>
-
-        <div class="input-field-wrap">
-          <label class="input-label">Topic / Chapter</label>
-          <input type="text" id="aiTutorTopicInput" placeholder="e.g., Quantum Physics: Wave-Particle Duality">
-        </div>
-
-        <div class="file-upload-wrap">
-          <label for="notesFileInputAi" class="file-btn">📎 Upload Source Notes</label>
-          <input type="file" id="notesFileInputAi" accept="*">
-          <span id="fileNameDisplayAi">No file attached</span>
-        </div>
-
-        <button class="action-btn" onclick="fetchAiTutorLesson()">
-          🎓 Generate Lesson & Practice MCQs
-        </button>
-
-        <div id="aiTutorOutput" class="output-box">
-          Enter a topic or upload study material above to generate lesson summaries and practice MCQs...
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- FULLSCREEN DISTRACTION OVERLAY -->
-  <div id="distractionOverlay" class="distraction-overlay hidden">
-    <div class="distraction-card">
-      <div class="warning-icon">⚠️</div>
-      <h2>FOCUS SHIELD TRIGGERED!</h2>
-      <p>Screen lock bypass or tab navigation detected during active study sprint.</p>
-      <div class="penalty-box">
-        <span>Distractions Logged:</span>
-        <strong id="distractionCountDisplay">0</strong>
-      </div>
-      <button class="action-btn return-btn" onclick="dismissShield()">
-        🛡️ Return to Deep Work
-      </button>
-    </div>
-  </div>
-
-  <script src="Part_2.js"></script>
+    <div id="post-session-modal" class="modal-overlay hidden"><div class="modal-content"><span class="eyebrow">Before you go</span><h2>Lock in one idea.</h2><p>Test your memory with a quick question from this session.</p><div id="mcq-container" class="mcq-card hidden"><strong id="mcq-question">Generating a question...</strong><div id="mcq-options"></div><p id="mcq-feedback"></p></div><div class="modal-actions"><button class="outline-button" onclick="finalizeAndExit()">Finish</button><button class="primary-button" onclick="startMCQChallenge()">Test me</button></div></div></div>
+    <div id="time-adjust-modal" class="modal-overlay hidden"><div class="modal-content compact"><span class="eyebrow">Session length</span><h2>Set your pace.</h2><input type="number" id="session-minutes-input" value="25" min="1" max="180" aria-label="Session minutes"><div class="modal-actions"><button id="modal-cancel-btn" class="outline-button">Cancel</button><button id="modal-ok-btn" class="primary-button">Apply</button></div></div></div>
+    <script src="Part_2.js"></script>
 </body>
-=======
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nexus AI Study Hub</title>
-  <link rel="stylesheet" href="Part_5.css">
-</head>
-<body>
-  <!-- BACKGROUND GLOW EFFECTS -->
-  <div class="bg-glow blob-1"></div>
-  <div class="bg-glow blob-2"></div>
-
-  <!-- SCREEN 1: FULLSCREEN MODE SELECTION -->
-  <div id="landingScreen" class="screen landing-screen">
-    <div class="landing-content">
-      <div class="brand-badge">✨ Hackathon Edition</div>
-      <h1 class="hero-title">How would you like to study today?</h1>
-      <p class="hero-subtitle">Select your workflow to optimize focus, learning, and active recall retention.</p>
-
-      <div class="mode-cards-grid">
-        <!-- Self-Study Card -->
-        <div class="mode-card" onclick="selectMode('self')">
-          <div class="mode-icon">⏱️</div>
-          <div class="mode-tag">Deep Work</div>
-          <h2>Self-Study Mode</h2>
-          <p>Set a Pomodoro focus sprint with Screen Lock protection. Complete your study session first, then trigger AI active recall testing based on your progress.</p>
-          <div class="mode-features">
-            <span>✓ Lock Screen Protection</span>
-            <span>✓ Distraction Tracking</span>
-            <span>✓ Post-Session Notes Quiz</span>
-          </div>
-          <button class="select-btn">Launch Sprint →</button>
-        </div>
-
-        <!-- AI Tutor Card -->
-        <div class="mode-card highlight" onclick="selectMode('ai')">
-          <div class="mode-icon">🤖</div>
-          <div class="mode-tag ai-tag">Interactive Learning</div>
-          <h2>AI Tutor Mode</h2>
-          <p>Learn topics instantly with an AI assistant. Upload reference notes to generate bullet lessons, practice MCQs, and custom quizzes.</p>
-          <div class="mode-features">
-            <span>✓ Instant Explanations</span>
-            <span>✓ Upload Any File</span>
-            <span>✓ Auto-Generated MCQs</span>
-          </div>
-          <button class="select-btn">Start AI Lesson →</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- SCREEN 2: MAIN DASHBOARD -->
-  <div id="appScreen" class="screen app-screen hidden">
-    <!-- Top Nav Bar -->
-    <header class="top-nav">
-      <button class="back-btn" onclick="backToLanding()">← Switch Mode</button>
-      
-      <div class="nav-controls">
-        <label class="sound-toggle">
-          <input type="checkbox" id="soundToggle" checked>
-          <span>🔔 Alert</span>
-        </label>
-        <div class="volume-box">
-          <span>🔊</span>
-          <input type="range" id="volumeControl" min="0" max="1" step="0.05" value="0.2">
-        </div>
-      </div>
-    </header>
-
-    <!-- VIEW A: SELF-STUDY MODE -->
-    <div id="selfStudyView" class="view-container hidden">
-      <div class="card timer-card">
-        <div class="card-header">
-          <span class="badge">Mode: Self-Study</span>
-          <h2>Focus Sprint</h2>
-        </div>
-
-        <div class="input-field-wrap">
-          <label class="input-label">Subject / Subtopic</label>
-          <input type="text" id="subjectInput" placeholder="e.g., Physics: Rotational Dynamics & Torque">
-        </div>
-
-        <div class="inputs-row">
-          <div class="time-field">
-            <input type="number" id="hrsInput" min="0" value="0" placeholder="00">
-            <span class="field-tag">HRS</span>
-          </div>
-          <span class="colon">:</span>
-          <div class="time-field">
-            <input type="number" id="minsInput" min="0" max="59" value="25" placeholder="00">
-            <span class="field-tag">MIN</span>
-          </div>
-          <span class="colon">:</span>
-          <div class="time-field">
-            <input type="number" id="secsInput" min="0" max="59" value="0" placeholder="00">
-            <span class="field-tag">SEC</span>
-          </div>
-        </div>
-        
-        <h1 id="timerDisplay">25:00</h1>
-        
-        <div class="btn-group">
-          <button id="startBtn" onclick="initiateStart()">Start Sprint</button>
-          <button id="pauseBtn" onclick="pauseTimer()">Pause</button>
-          <button id="skipBtn" class="skip-btn" onclick="skipTimer()" title="Hackathon Skip Demo">⏭️ Skip</button>
-          <button id="resetBtn" onclick="resetTimer()">Reset</button>
-        </div>
-      </div>
-
-      <!-- Notes Attachment & AI Quiz (UNLOCKED ONLY AFTER TIMER END / SKIP) -->
-      <div id="postSessionCard" class="card ai-card hidden">
-        <div class="card-header">
-          <span class="badge success-badge">🎉 Sprint Finished</span>
-          <h3>Active Recall & Note Assessment</h3>
-          <p class="sub-text">Attach notes from your study sprint to generate a personalized evaluation quiz.</p>
-        </div>
-
-        <div class="file-upload-wrap">
-          <label for="notesFileInputSelf" class="file-btn">📎 Attach Study Notes (Any File Format)</label>
-          <input type="file" id="notesFileInputSelf" accept="*">
-          <span id="fileNameDisplaySelf">No file attached</span>
-        </div>
-
-        <button class="action-btn" onclick="fetchSelfStudyRecall()">
-          ✨ Generate Recall Quiz
-        </button>
-
-        <div id="aiQuizOutputSelf" class="output-box">
-          Attach your study file above or click Generate to test memory retention on what you studied...
-        </div>
-      </div>
-    </div>
-
-    <!-- VIEW B: AI TUTOR MODE -->
-    <div id="aiTutorView" class="view-container hidden">
-      <div class="card ai-card">
-        <div class="card-header">
-          <span class="badge ai-badge">Mode: AI Tutor</span>
-          <h2>Learn Concept & Practice MCQs</h2>
-          <p class="sub-text">Input a topic or upload source notes to receive structured explanations and practice questions immediately.</p>
-        </div>
-
-        <div class="input-field-wrap">
-          <label class="input-label">Topic / Chapter</label>
-          <input type="text" id="aiTutorTopicInput" placeholder="e.g., Quantum Physics: Wave-Particle Duality">
-        </div>
-
-        <div class="file-upload-wrap">
-          <label for="notesFileInputAi" class="file-btn">📎 Upload Source Notes</label>
-          <input type="file" id="notesFileInputAi" accept="*">
-          <span id="fileNameDisplayAi">No file attached</span>
-        </div>
-
-        <button class="action-btn" onclick="fetchAiTutorLesson()">
-          🎓 Generate Lesson & Practice MCQs
-        </button>
-
-        <div id="aiTutorOutput" class="output-box">
-          Enter a topic or upload study material above to generate lesson summaries and practice MCQs...
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- FULLSCREEN DISTRACTION OVERLAY -->
-  <div id="distractionOverlay" class="distraction-overlay hidden">
-    <div class="distraction-card">
-      <div class="warning-icon">⚠️</div>
-      <h2>FOCUS SHIELD TRIGGERED!</h2>
-      <p>Screen lock bypass or tab navigation detected during active study sprint.</p>
-      <div class="penalty-box">
-        <span>Distractions Logged:</span>
-        <strong id="distractionCountDisplay">0</strong>
-      </div>
-      <button class="action-btn return-btn" onclick="dismissShield()">
-        🛡️ Return to Deep Work
-      </button>
-    </div>
-  </div>
-
-  <script src="Part_2.js"></script>
-</body>
->>>>>>> d217a1011e718ad36c2068bf67092fe212522ba0
 </html>
