@@ -1,367 +1,170 @@
-// --- GLOBAL STATE ---
-let timerInterval;
-let timeLeft = 25 * 60; 
-let isPaused = true; 
-let currentSessionChat = [];
-let currentMode = '';
-let fileContext = '';
-let sessionActuallyInteracted = false; 
+const STORAGE_KEY = 'focus_desk_guardian';
+const DEFAULT_STATE = {
+    policy: { language: 'English', subject: 'Computer science', focusGoal: 120, dailyLimit: 45, strictness: 'Balanced', counseling: 'Practical and brief', overnight: true, escalation: true },
+    events: [],
+    focusSeconds: 0,
+    socialMinutes: 0,
+    interruptions: 0,
+    sessionActive: false,
+    counselingShown: false,
+    lockUntil: 0
+};
+let state = loadState();
+let sessionTimer = null;
+let sessionSeconds = 25 * 60;
+let sessionStartedAt = 0;
 
-// --- HISTORY & SIDEBAR LOGIC ---
-function loadHistory() {
-    const history = JSON.parse(localStorage.getItem('study_history')) || [];
-    const selfStudyLog = document.getElementById('self-study-log');
-    const aiTutorLog = document.getElementById('ai-tutor-log');
-    
-    if (!selfStudyLog || !aiTutorLog) return;
-    
-    selfStudyLog.innerHTML = '';
-    aiTutorLog.innerHTML = '';
-
-    let hasSelfStudy = false;
-    let hasAiTutor = false;
-
-    history.forEach((item) => {
-        const div = document.createElement('div');
-        div.className = 'history-item';
-        div.innerHTML = `<div><b>${item.time}</b></div><div style="font-size:0.8rem; color:#94a3b8;">${item.detail || 'Completed'}</div>`;
-        
-        if (item.mode === 'Self-Study') {
-            hasSelfStudy = true;
-            selfStudyLog.appendChild(div);
-        } else if (item.mode === 'AI Tutor') {
-            hasAiTutor = true;
-            div.onclick = () => recallAISession(item.chatLog);
-            aiTutorLog.appendChild(div);
-        }
-    });
-
-    const selfSection = document.getElementById('self-study-section');
-    const aiSection = document.getElementById('ai-tutor-section');
-    
-    if (hasSelfStudy) selfSection.classList.remove('hidden');
-    else selfSection.classList.add('hidden');
-
-    if (hasAiTutor) aiSection.classList.remove('hidden');
-    else aiSection.classList.add('hidden');
+function loadState() {
+    try { return { ...DEFAULT_STATE, ...JSON.parse(localStorage.getItem(STORAGE_KEY)) }; } catch (error) { return structuredClone(DEFAULT_STATE); }
 }
+function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function now() { return new Date(); }
+function timestamp() { return now().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+function isLocked() { return state.lockUntil > Date.now(); }
+function remainingLock() { return Math.max(0, Math.ceil((state.lockUntil - Date.now()) / 60000)); }
+function $(id) { return document.getElementById(id); }
+function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character])); }
 
-function saveToHistory(modeName, detail = null) {
-    const history = JSON.parse(localStorage.getItem('study_history')) || [];
-    const record = {
-        mode: modeName,
-        time: new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    };
-    
-    if (modeName === 'Self-Study') record.detail = detail;
-    if (modeName === 'AI Tutor') record.chatLog = [...currentSessionChat];
-
-    history.unshift(record);
-    localStorage.setItem('study_history', JSON.stringify(history));
-    loadHistory();
+function addEvent(type, source, detail, decision, action) {
+    state.events.unshift({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), time: timestamp(), type, source, detail, decision, action });
+    if (state.events.length > 200) state.events.length = 200;
+    saveState(); renderAll();
 }
-
-// --- TIMER CONTROLS ---
-function updateTimerDisplay() {
-    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
-    const s = (timeLeft % 60).toString().padStart(2, '0');
-    const display = document.getElementById('timer-display');
-    if (display) display.innerText = `${m}:${s}`;
+function currentStateLabel() {
+    if (isLocked()) return `Locked · ${remainingLock()}m`;
+    if (state.sessionActive) return 'Focused';
+    return 'Ready';
 }
-
-function startTimer() {
-    clearInterval(timerInterval);
-    isPaused = false;
-    sessionActuallyInteracted = true; 
-    const pauseBtn = document.getElementById('pause-btn');
-    if (pauseBtn) pauseBtn.innerText = "Pause";
-    
-    timerInterval = setInterval(() => {
-        if (!isPaused && timeLeft > 0) {
-            timeLeft--;
-            updateTimerDisplay();
-        } else if (timeLeft === 0) {
-            clearInterval(timerInterval);
-            alert("Focus Sprint Complete!");
-            endSession('Self-Study');
-        }
+function switchView(viewId) {
+    document.querySelectorAll('.page-view').forEach(view => view.classList.toggle('hidden', view.id !== viewId));
+    document.querySelectorAll('.nav-item').forEach(button => button.classList.toggle('active', button.dataset.view === viewId));
+}
+function renderAll() {
+    const today = new Date().toDateString();
+    const todayEvents = state.events.filter(event => new Date(event.time).toDateString() === today);
+    $('focus-today').textContent = `${String(Math.floor(state.focusSeconds / 60)).padStart(2, '0')}:${String(state.focusSeconds % 60).padStart(2, '0')}`;
+    $('focus-goal').textContent = state.policy.focusGoal;
+    $('interruptions-today').textContent = state.interruptions;
+    $('policy-state').textContent = currentStateLabel();
+    $('lock-summary').textContent = isLocked() ? `Social media locked for ${remainingLock()}m` : 'Overnight rule armed';
+    $('limit-used').textContent = state.socialMinutes;
+    $('daily-limit-label').textContent = state.policy.dailyLimit;
+    $('session-state').textContent = state.sessionActive ? 'Active' : 'Inactive';
+    $('session-title').textContent = state.sessionActive ? 'Deep work in progress' : 'No active session';
+    $('session-description').textContent = state.sessionActive ? 'The guardian is observing policy-relevant signals while you work.' : 'Start a focus session to make the policy active for your intended task.';
+    $('session-clock').textContent = `${String(Math.floor(sessionSeconds / 60)).padStart(2, '0')}:${String(sessionSeconds % 60).padStart(2, '0')}`;
+    $('last-decision').textContent = state.events[0] ? `“${state.events[0].decision}”` : '“Policy loaded. Waiting for an event.”';
+    $('last-decision-time').textContent = state.events[0]?.time || 'No events yet';
+    $('decision-headline').textContent = isLocked() ? `Social media locked for ${remainingLock()} minutes.` : state.sessionActive ? 'Your focus session is protected.' : 'Ready for a focused session.';
+    $('decision-detail').textContent = state.events[0]?.decision || 'No interruptions detected. Your policy is loaded and enforcement is available.';
+    $('policy-state').className = isLocked() ? 'locked-state' : '';
+    renderEvents(todayEvents);
+    renderPolicy();
+    updatePlanProgress();
+}
+function renderEvents(todayEvents) {
+    $('event-list').innerHTML = state.events.length ? state.events.map(event => `<article class="event-row"><div class="event-marker ${event.type}"></div><div class="event-body"><div class="event-meta"><span>${escapeHtml(event.time)}</span><b>${escapeHtml(event.source)}</b><em>${escapeHtml(event.type)}</em></div><strong>${escapeHtml(event.detail)}</strong><p><span>Decision:</span> ${escapeHtml(event.decision)}</p><p><span>Action:</span> ${escapeHtml(event.action)}</p></div></article>`).join('') : '<div class="empty-state"><span class="empty-icon">+</span><h2>No decisions yet.</h2><p>Your local event record will appear here as the guardian observes activity.</p></div>';
+}
+function renderPolicy() {
+    $('preferred-language').value = state.policy.language;
+    $('primary-subject').value = state.policy.subject;
+    $('focus-goal-input').value = state.policy.focusGoal;
+    $('daily-limit').value = state.policy.dailyLimit;
+    $('strictness').value = state.policy.strictness;
+    $('counseling-style').value = state.policy.counseling;
+    $('overnight-rule').checked = state.policy.overnight;
+    $('escalation-rule').checked = state.policy.escalation;
+}
+function updatePlanProgress() {
+    const checks = [...document.querySelectorAll('.plan-check')];
+    $('plan-progress').textContent = `${checks.filter(check => check.checked).length} / ${checks.length}`;
+}
+function startFocus() {
+    if (state.sessionActive) return;
+    state.sessionActive = true;
+    state.counselingShown = false;
+    sessionSeconds = 25 * 60;
+    sessionStartedAt = Date.now();
+    addEvent('actioned', 'Study session', 'Focus session started', 'Policy activated for the intended study task.', 'Monitoring active');
+    clearInterval(sessionTimer);
+    sessionTimer = setInterval(() => {
+        if (!state.sessionActive) return;
+        sessionSeconds -= 1;
+        state.focusSeconds += 1;
+        if (sessionSeconds <= 0) endFocus('Focus session completed');
+        renderAll();
+        saveState();
     }, 1000);
 }
-
-function pauseTimer() {
-    if (isPaused) {
-        startTimer();
-    } else {
-        isPaused = true;
-        const pauseBtn = document.getElementById('pause-btn');
-        if (pauseBtn) pauseBtn.innerText = "Resume";
-    }
+function endFocus(reason = 'Focus session ended by user') {
+    if (!state.sessionActive) return;
+    state.sessionActive = false;
+    clearInterval(sessionTimer);
+    addEvent('actioned', 'Study session', reason, 'The active focus state was closed by the user or timer.', 'Monitoring paused');
 }
-
-function resetTimer() {
-    isPaused = true;
-    clearInterval(timerInterval);
-    timeLeft = 25 * 60;
-    updateTimerDisplay();
-    const pauseBtn = document.getElementById('pause-btn');
-    if (pauseBtn) pauseBtn.innerText = "Start";
+function observeStudyTool() {
+    addEvent('observed', 'Study tool', 'Approved study activity detected', 'Activity matches the approved study context.', 'No restriction applied');
 }
-
-function adjustTimer() {
-    const modal = document.getElementById('time-adjust-modal');
-    if (modal) modal.classList.remove('hidden');
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const okBtn = document.getElementById('modal-ok-btn');
-    const cancelBtn = document.getElementById('modal-cancel-btn');
-    const input = document.getElementById('session-minutes-input');
-
-    if (okBtn) {
-        okBtn.onclick = () => {
-            const mins = parseInt(input.value, 10);
-            if (mins > 0) {
-                timeLeft = mins * 60;
-                updateTimerDisplay();
-            }
-            document.getElementById('time-adjust-modal').classList.add('hidden');
-        };
-    }
-
-    if (cancelBtn) {
-        cancelBtn.onclick = () => {
-            document.getElementById('time-adjust-modal').classList.add('hidden');
-        };
-    }
-
-    loadHistory(); 
-});
-// --- UI & LOCKDOWN ---
-function switchView(showId) {
-    document.querySelectorAll('.app-container, .active-view').forEach(el => el.classList.add('hidden'));
-    document.getElementById(showId).classList.remove('hidden');
-}
-
-async function startSelfStudy() {
-    currentMode = 'Self-Study';
-    sessionActuallyInteracted = false; 
-    switchView('study-view');
-    timeLeft = 25 * 60;
-    isPaused = true; 
-    updateTimerDisplay();
-    const pauseBtn = document.getElementById('pause-btn');
-    if (pauseBtn) pauseBtn.innerText = "Start";
-
-    try {
-        await document.documentElement.requestFullscreen();
-        if ('keyboard' in navigator && navigator.keyboard.lock) {
-            await navigator.keyboard.lock(['Escape']);
-        }
-    } catch (err) {}
-}
-
-document.addEventListener('fullscreenchange', () => {
-    const studyView = document.getElementById('study-view');
-    if (!studyView.classList.contains('hidden') && !document.fullscreenElement) {
-        clearInterval(timerInterval);
-        alert("⚠️ Lockdown Breach Detected! Session terminated early.");
-        endSession('Self-Study');
-    }
-});
-
-function startAITutor() {
-    currentMode = 'AI Tutor';
-    currentSessionChat = [];
-    fileContext = '';
-    document.getElementById('ai-chat-box').innerHTML = '';
-    const dropZone = document.getElementById('file-drop-area');
-    if(dropZone) dropZone.innerHTML = `📂 Drag & Drop Study Materials Here OR <label class="file-browse-btn">Browse Files <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)"></label>`;
-    switchView('ai-view');
-}
-
-function openPostSessionModal() {
-    if (currentSessionChat.length === 0) {
-        finalizeAndExit(); 
+function observeSocial() {
+    state.interruptions += 1;
+    state.socialMinutes += 5;
+    const afterCounseling = state.counselingShown;
+    const overLimit = state.socialMinutes >= Number(state.policy.dailyLimit);
+    if (isLocked()) { addEvent('actioned', 'Social domain', 'Configured social-media target requested during an active lock', 'The three-hour lock is still active.', 'Access denied'); return; }
+    if (state.policy.overnight && (new Date().getHours() >= 23 || new Date().getHours() < 5)) {
+        state.lockUntil = Date.now() + 3 * 60 * 60 * 1000;
+        addEvent('actioned', 'Social domain', 'Configured social-media target opened during overnight protection', 'Overnight rule applies from 11:00 PM to 5:00 AM.', 'Blocked immediately');
         return;
     }
-    const modal = document.getElementById('post-session-modal');
-    document.getElementById('mcq-container').classList.add('hidden');
-    if (modal) modal.classList.remove('hidden');
+    if (afterCounseling || overLimit) {
+        state.lockUntil = Date.now() + 3 * 60 * 60 * 1000;
+        addEvent('actioned', 'Social domain', 'Continued social-media use after counseling', `${state.interruptions} interruption(s) recorded after the reset step.`, 'All configured social media locked for three hours');
+        closeCounseling();
+        return;
+    }
+    addEvent('inferred', 'Social domain', 'Social-media interruption detected during the current focus context', 'A first interruption gets a brief, respectful reset before escalation.', 'Counseling shown');
+    state.counselingShown = true;
+    saveState();
+    openCounseling();
 }
-
-function finalizeAndExit() {
-    document.getElementById('post-session-modal').classList.add('hidden');
-    endSession('AI Tutor');
+function openCounseling() { $('counseling-modal').classList.remove('hidden'); $('counseling-copy').textContent = `You opened a configured social site during a focus session. ${state.interruptions} interruption(s) are recorded. What would help now?`; }
+function closeCounseling() { $('counseling-modal').classList.add('hidden'); }
+function chooseCounseling(choice) {
+    closeCounseling();
+    if (choice === 'resume') addEvent('actioned', 'Counseling', 'Learner chose to resume', 'The learner acknowledged the reset and returned to the task.', 'Focus monitoring continues');
+    if (choice === 'break') { endFocus('Learner chose a break'); addEvent('actioned', 'Counseling', 'Learner chose a break', 'A break was selected before continued use.', 'Focus monitoring paused'); }
+    if (choice === 'end') endFocus('Learner ended the session after counseling');
 }
-
-async function endSession(modeName) {
-    if (document.fullscreenElement) {
-        try { await document.exitFullscreen(); } catch(e) {}
-    }
-    if ('keyboard' in navigator && navigator.keyboard.unlock) {
-        navigator.keyboard.unlock();
-    }
-    clearInterval(timerInterval);
-    
-    if (modeName === 'Self-Study' && sessionActuallyInteracted) {
-        const durationText = document.getElementById('timer-display').innerText;
-        saveToHistory('Self-Study', `Finished (${durationText} left)`);
-    } else if (modeName === 'AI Tutor' && currentSessionChat.length > 0) {
-        saveToHistory('AI Tutor');
-    }
-    
-    switchView('dashboard-view');
-    loadHistory(); 
+function explainTopic() {
+    const topic = $('explain-topic').value.trim() || state.policy.subject;
+    $('explain-output').classList.remove('hidden');
+    $('explain-output').innerHTML = `<strong>${escapeHtml(topic)}</strong><p>Start with the simplest useful model: define the idea, connect it to one concrete example, then explain what would change if one part changed. Write a two-sentence version in your own words before checking your notes.</p><small>Local study scaffold · no cloud processing</small>`;
 }
-
-document.addEventListener('keydown', (e) => {
-    if (e.key.toLowerCase() === 'l' && !document.getElementById('study-view').classList.contains('hidden')) {
-        document.getElementById('emergency-exit').classList.toggle('hidden');
-    }
-});
-
-// --- AI TUTOR & FAST CONCISE LLM ---
-function handleFileSelect(input) {
-    if (input.files.length > 0) {
-        const file = input.files[0];
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            fileContext = e.target.result;
-            document.getElementById('file-drop-area').innerHTML = `📄 Loaded File: <b>${file.name}</b> (Context active)`;
-        };
-        reader.readAsText(file);
-    }
+function generatePractice() {
+    $('practice-question').textContent = `Explain one important idea from ${state.policy.subject} without looking at your notes.`;
+    $('practice-prompt').textContent = 'Give yourself two minutes, then compare your answer with your notes.';
+    $('practice-answer').classList.remove('hidden');
+    $('practice-answer').innerHTML = '<strong>Recall cue</strong><p>What is the problem this idea solves? What is one example? What is one common mistake?</p>';
 }
-
-async function askOllama() {
-    const inputEl = document.getElementById('ai-prompt');
-    const chatBox = document.getElementById('ai-chat-box');
-    const text = inputEl.value.trim();
-    if (!text) return;
-
-    chatBox.innerHTML += `<div class="user-msg">${text}</div>`;
-    currentSessionChat.push({ role: 'user', content: text });
-    inputEl.value = '';
-    
-    const loadingId = 'loading-' + Date.now();
-    chatBox.innerHTML += `<div id="${loadingId}" class="ai-msg"><b>Tutor:</b> Thinking...</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    const systemInstruction = "You are a concise, high-efficiency AI tutor. Keep explanations short, punchy, and structured with clear bullet points. Avoid overly long paragraphs so the student can learn quickly.";
-    const fullPrompt = `${systemInstruction}\n\n${fileContext ? 'Context:\n' + fileContext + '\n\n' : ''}Student Question: ${text}`;
-
-    try {
-        const response = await fetch('http://localhost:11434/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                model: 'llama3.2', 
-                prompt: fullPrompt, 
-                stream: false,
-                options: { num_predict: 250 } 
-            })
-        });
-        const data = await response.json();
-        document.getElementById(loadingId).innerHTML = `<b>Tutor:</b><br>${data.response.replace(/\n/g, '<br>')}`;
-        currentSessionChat.push({ role: 'ai', content: data.response });
-    } catch (error) {
-        document.getElementById(loadingId).innerHTML = `<b style="color:red;">Error:</b> Could not reach local Ollama instance on port 11434.`;
-    }
-    chatBox.scrollTop = chatBox.scrollHeight;
-}
-
-// --- MCQ GENERATOR FEATURE ---
-async function startMCQChallenge() {
-    const mcqContainer = document.getElementById('mcq-container');
-    const qEl = document.getElementById('mcq-question');
-    const optsEl = document.getElementById('mcq-options');
-    const feedbackEl = document.getElementById('mcq-feedback');
-
-    mcqContainer.classList.remove('hidden');
-    qEl.innerText = "Generating MCQ based on your session...";
-    optsEl.innerHTML = "";
-    feedbackEl.innerText = "";
-
-    const chatHistorySummary = currentSessionChat.map(m => `${m.role}: ${m.content}`).join('\n');
-    const prompt = `Based on this study session conversation, generate ONE multiple-choice question (MCQ) to test the student. 
-    Format your response STRICTLY as JSON with this exact structure:
-    {
-      "question": "The question text here",
-      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
-      "correct": 0
-    }
-    where 'correct' is the 0-based index of the correct option. Do not include markdown code blocks around the JSON if possible, just raw JSON.
-    
-    Session History:
-    ${chatHistorySummary}`;
-
-    try {
-        const response = await fetch('http://localhost:11434/api/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'llama3.2', prompt: prompt, stream: false })
-        });
-        const data = await response.json();
-        
-        let cleanJsonStr = data.response.trim();
-        if (cleanJsonStr.startsWith('```json')) cleanJsonStr = cleanJsonStr.replace(/^```json/, '').replace(/```$/, '').trim();
-        if (cleanJsonStr.startsWith('```')) cleanJsonStr = cleanJsonStr.replace(/^```/, '').replace(/```$/, '').trim();
-        
-        const mcqData = JSON.parse(cleanJsonStr);
-
-        qEl.innerText = mcqData.question;
-        optsEl.innerHTML = "";
-        
-        mcqData.options.forEach((opt, index) => {
-            const btn = document.createElement('button');
-            btn.className = 'mcq-btn';
-            btn.innerText = opt;
-            btn.onclick = () => {
-                if (index === mcqData.correct) {
-                    feedbackEl.innerHTML = "✅ Correct! Great job mastering this concept.";
-                    feedbackEl.style.color = "#10b981";
-                } else {
-                    feedbackEl.innerHTML = `❌ Incorrect. The correct answer was: ${mcqData.options[mcqData.correct]}`;
-                    feedbackEl.style.color = "#ef4444";
-                }
-                Array.from(optsEl.children).forEach(b => b.disabled = true);
-            };
-            optsEl.appendChild(btn);
-        });
-
-    } catch (err) {
-        qEl.innerText = "Could not generate MCQ automatically. You can finish session now.";
-    }
-}
-
-function recallAISession(chatLog) {
-    if (!chatLog || chatLog.length === 0) return;
-    switchView('ai-view');
-    currentSessionChat = [...chatLog];
-    const chatBox = document.getElementById('ai-chat-box');
-    chatBox.innerHTML = chatLog.map(msg => 
-        msg.role === 'user' ? `<div class="user-msg">${msg.content}</div>` 
-                            : `<div class="ai-msg"><b>Tutor:</b><br>${msg.content.replace(/\n/g, '<br>')}</div>`
-    ).join('');
+function exportEvents() {
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), policy: state.policy, events: state.events }, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'focus-desk-event-record.json'; link.click(); URL.revokeObjectURL(link.href);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const dropZone = document.getElementById('file-drop-area');
-    if (dropZone) {
-        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropZone.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                const reader = new FileReader();
-                reader.onload = function(evt) {
-                    fileContext = evt.target.result;
-                    dropZone.innerHTML = `📄 Loaded File: <b>${file.name}</b> (Context active)`;
-                };
-                reader.readAsText(file);
-            }
-        });
-    }
+    document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
+    $('start-focus-btn').addEventListener('click', () => { startFocus(); switchView('monitor-view'); });
+    $('monitor-focus-btn').addEventListener('click', startFocus);
+    $('stop-focus-btn').addEventListener('click', () => endFocus());
+    $('simulate-interruption').addEventListener('click', observeSocial);
+    $('simulate-study').addEventListener('click', observeStudyTool);
+    $('simulate-counseling').addEventListener('click', openCounseling);
+    document.querySelectorAll('[data-counseling-choice]').forEach(button => button.addEventListener('click', () => chooseCounseling(button.dataset.counselingChoice)));
+    $('explain-btn').addEventListener('click', explainTopic);
+    $('practice-btn').addEventListener('click', generatePractice);
+    document.querySelectorAll('.plan-check').forEach(check => check.addEventListener('change', updatePlanProgress));
+    $('policy-form').addEventListener('submit', event => { event.preventDefault(); state.policy = { language: $('preferred-language').value, subject: $('primary-subject').value.trim() || 'General study', focusGoal: Number($('focus-goal-input').value) || 120, dailyLimit: Number($('daily-limit').value) || 0, strictness: $('strictness').value, counseling: $('counseling-style').value, overnight: $('overnight-rule').checked, escalation: $('escalation-rule').checked }; saveState(); addEvent('actioned', 'Policy editor', 'Policy settings updated by learner', 'The user explicitly approved the new policy values.', 'Policy saved locally'); $('policy-saved').textContent = 'Saved locally'; setTimeout(() => $('policy-saved').textContent = '', 2400); });
+    $('export-events').addEventListener('click', exportEvents);
+    $('clear-events').addEventListener('click', () => { if (confirm('Delete the local event record? This cannot be undone.')) { state.events = []; saveState(); renderAll(); } });
+    renderAll();
 });

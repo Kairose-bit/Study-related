@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Session Website</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div id="dashboard-view" class="app-container">
+        <h1>Study Session Dashboard</h1>
+        <button onclick="startSelfStudy()">Start Self-Study</button>
+        <button onclick="startAITutor()">Start AI Tutor</button>
+        <div id="self-study-section" class="hidden">
+            <h2>Self-Study History</h2>
+            <div id="self-study-log"></div>
+        </div>
+        <div id="ai-tutor-section" class="hidden">
+            <h2>AI Tutor History</h2>
+            <div id="ai-tutor-log"></div>
+        </div>
+    </div>
+
+    <div id="study-view" class="app-container hidden">
+        <h2>Self-Study Timer</h2>
+        <div id="timer-display">25:00</div>
+        <button id="pause-btn" onclick="pauseTimer()">Start</button>
+        <button onclick="adjustTimer()">Adjust Time</button>
+        <button onclick="endSession('Self-Study')">End Session</button>
+    </div>
+
+    <div id="ai-view" class="app-container hidden">
+        <h2>AI Tutor Chat</h2>
+        <div id="ai-chat-box"></div>
+        <input type="text" id="ai-prompt" placeholder="Ask your question...">
+        <button onclick="askOllama()">Send</button>
+        <div id="file-drop-area">📂 Drag & Drop Study Materials Here OR <label class="file-browse-btn">Browse Files <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)"></label></div>
+    </div>
+
+    <div id="post-session-modal" class="hidden">
+        <h2>Post-Session Review</h2>
+        <div id="mcq-container" class="hidden">
+            <div id="mcq-question"></div>
+            <div id="mcq-options"></div>
+            <div id="mcq-feedback"></div>
+        </div>
+        <button onclick="finalizeAndExit()">Finish</button>
+    </div>
+
+    <div id="time-adjust-modal" class="hidden">
+        <h2>Adjust Timer</h2>
+        <input type="number" id="session-minutes-input" placeholder="Minutes">
+        <button id="modal-ok-btn">OK</button>
+        <button id="modal-cancel-btn">Cancel</button>
+    </div>
+
+    <div id="emergency-exit" class="hidden">Emergency Exit Activated!</div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
