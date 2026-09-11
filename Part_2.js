@@ -108,12 +108,29 @@ async function addMaterials(files) {
     studyMaterials = [...studyMaterials, ...materials].slice(-8);
     renderMaterials();
 }
-async function askOllama(question) {
-    const context = studyMaterials.length ? `\nStudy materials:\n${studyMaterials.map(material => `--- ${material.name} ---\n${material.content}`).join('\n')}` : '';
-    const response = await fetch('http://localhost:11434/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'llama3.2', prompt: `You are a concise, friendly study tutor. Answer clearly and use the attached material when relevant. If the material is not readable, say so.\n${context}\n\nQuestion: ${question}`, stream: false, options: { num_predict: 300 } }) });
-    if (!response.ok) throw new Error(`Ollama returned ${response.status}`);
-    const data = await response.json();
-    return data.response || 'Ollama returned an empty answer.';
+async function askOllama(question, target) {
+    const context = studyMaterials.length ? `\nStudy material:\n${studyMaterials.map(material => `--- ${material.name} ---\n${material.content}`).join('\n')}` : '';
+    const response = await fetch('http://localhost:11434/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'llama3.2', prompt: `You are a fast, friendly study tutor. Answer in 4-6 short sentences. Use the material when relevant.\n${context}\n\nQuestion: ${question}`, stream: true, keep_alive: '10m', options: { num_predict: 180, temperature: 0.2 } }) });
+    if (!response.ok || !response.body) throw new Error(`Ollama returned ${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let answer = '';
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const part = JSON.parse(line);
+            answer += part.response || '';
+            target.textContent = answer;
+            $('chat-box').scrollTop = $('chat-box').scrollHeight;
+        }
+    }
+    return answer || 'Ollama returned an empty answer.';
 }
 async function generateQuiz() {
     const topic = $('study-topic').value.trim();
@@ -168,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('file-drop').addEventListener('dragover', event => { event.preventDefault(); $('file-drop').classList.add('dragging'); });
     $('file-drop').addEventListener('dragleave', () => $('file-drop').classList.remove('dragging'));
     $('file-drop').addEventListener('drop', event => { event.preventDefault(); $('file-drop').classList.remove('dragging'); addMaterials(event.dataTransfer.files); });
-    $('chat-form').addEventListener('submit', async event => { event.preventDefault(); const question = $('chat-input').value.trim(); if (!question) return; addTutorMessage(question, 'user-message'); $('chat-input').value = ''; addTutorMessage('Thinking with local Ollama...', 'tutor-message thinking'); try { const answer = await askOllama(question); document.querySelector('.thinking:last-child').textContent = answer; } catch (error) { document.querySelector('.thinking:last-child').textContent = answerLocally(question); } });
+    $('chat-form').addEventListener('submit', async event => { event.preventDefault(); const question = $('chat-input').value.trim(); if (!question) return; addTutorMessage(question, 'user-message'); $('chat-input').value = ''; addTutorMessage('Thinking with local Ollama...', 'tutor-message thinking'); const answerTarget = document.querySelector('.thinking:last-child'); try { await askOllama(question, answerTarget); answerTarget.classList.remove('thinking'); } catch (error) { answerTarget.classList.remove('thinking'); answerTarget.textContent = answerLocally(question); } });
     checkOllama();
     document.addEventListener('keydown', event => { if (event.key.toLowerCase() === 'l' && sessionRunning) { event.preventDefault(); emergencyExit(); } });
     window.addEventListener('force-exit-self-study', emergencyExit);
