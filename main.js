@@ -28,9 +28,9 @@ app.whenReady().then(() => {
     mainWindow.setFullScreen(!isKiosk);
   });
 
-  // L is the global force-quit key while the protected session is active.
+  // L exits the protected fullscreen session from anywhere in the desktop app.
   globalShortcut.register('L', () => {
-    app.quit();
+    mainWindow.webContents.send('force-exit-self-study');
   });
 
   // Keep the old creator shortcut as a secondary force-quit path.
