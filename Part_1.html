@@ -6,12 +6,32 @@
         <meta name="theme-color" content="#081313">
     <title>Focus Desk | Study Guardian</title>
     <link rel="stylesheet" href="Part_5.css">
+    <style>
+        .mode-picker { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 25px; background: #081313; }
+        .mode-picker-card { width: min(760px, 100%); text-align: center; }
+        .mode-picker-card > .brand-mark { margin: 0 auto 25px; }
+        .mode-picker-card h1 { max-width: none; margin-bottom: 15px; font-size: clamp(38px, 6vw, 68px); }
+        .mode-picker-card > p { max-width: 510px; margin: 0 auto; color: var(--muted); font: 13px/1.6 Arial, sans-serif; }
+        .mode-choice-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; margin-top: 35px; }
+        .mode-choice { min-height: 195px; padding: 23px; border: 1px solid var(--line); background: var(--panel); color: var(--text); text-align: left; transition: .2s; }
+        .mode-choice:hover { transform: translateY(-3px); border-color: var(--teal); }
+        .mode-choice > span { display: block; color: var(--coral); font: bold 10px Arial, sans-serif; letter-spacing: .12em; }
+        .mode-choice strong { display: block; margin-top: 48px; font-size: 23px; font-weight: normal; }
+        .mode-choice small { display: block; margin-top: 8px; color: var(--muted); font: 11px/1.5 Arial, sans-serif; }
+        .self-choice { background: var(--teal-deep); }.tutor-choice { background: #211f20; }
+        .mode-picker-note { display: block; margin-top: 25px; color: #55736c; font: 10px Arial, sans-serif; }
+        .warning-box { display: grid; gap: 7px; margin: 22px 0 5px; padding: 15px; border-left: 2px solid var(--coral); background: #0d1c1b; color: var(--muted); font: 11px Arial, sans-serif; }
+        .warning-box strong { color: var(--coral); font: 12px Arial, sans-serif; }.warning-box b { color: var(--text); }
+        @media (max-width: 620px) { .mode-choice-grid { grid-template-columns: 1fr; }.mode-choice { min-height: 145px; }.mode-choice strong { margin-top: 25px; } }
+    </style>
 </head>
 <body>
-    <div class="app-shell">
+    <div id="mode-picker" class="mode-picker"><div class="mode-picker-card"><span class="brand-mark">FD</span><span class="eyebrow">Focus Desk</span><h1>How would you like to study?</h1><p>Choose a mode to begin. You can switch modes later from the dashboard.</p><div class="mode-choice-grid"><button id="choose-tutor" class="mode-choice tutor-choice"><span>01</span><strong>AI tutor mode</strong><small>Ask questions, explain concepts, and practise with a local study assistant.</small></button><button id="choose-self-study" class="mode-choice self-choice"><span>02</span><strong>Self-study mode</strong><small>Start a protected fullscreen focus session with a 25-minute timer.</small></button></div><small class="mode-picker-note">Your activity stays on this device. No cloud processing is enabled.</small></div></div>
+
+    <div class="app-shell hidden" id="app-shell">
         <aside class="sidebar">
             <div class="brand-lockup"><span class="brand-mark">FD</span><div><strong>Focus Desk</strong><span>Study Guardian</span></div></div>
-            <div class="profile-chip"><span class="avatar">A</span><div><strong>Alex's workspace</strong><small>Local-only mode</small></div></div>
+            <div class="profile-chip"><span class="avatar">FD</span><div><strong>Your study space</strong><small>Local-only mode</small></div></div>
             <nav class="nav-list" aria-label="Main navigation">
                 <button class="nav-item active" data-view="overview-view"><span>01</span>Overview</button>
                 <button class="nav-item" data-view="monitor-view"><span>02</span>Monitor</button>
@@ -41,6 +61,7 @@
             <section id="events-view" class="page-view hidden"><header class="page-header compact-header"><div><span class="eyebrow">Append-only record</span><h1>Every decision has a reason.</h1><p class="lede">Review what was observed, inferred, decided, and done. Nothing is deleted automatically.</p></div><button class="outline-button" id="clear-events">Delete local record</button></header><div class="legend-row"><span><i class="legend-dot observed"></i>Observed</span><span><i class="legend-dot inferred"></i>Inferred</span><span><i class="legend-dot actioned"></i>Action taken</span></div><div id="event-list" class="event-list"></div></section>
         </main>
     </div>
+    <div id="self-study-warning" class="modal-overlay hidden"><div class="modal-content warning-content"><span class="eyebrow">Self-study protection</span><h2>Ready to protect your focus?</h2><p>Self-study will open fullscreen. You will not be able to leave the study session normally until it ends.</p><div class="warning-box"><strong>Emergency exit</strong><span>Press <b>I</b> to leave the protected session.</span><span>Press <b>L</b> to force-quit the desktop app.</span></div><div class="modal-actions"><button id="cancel-self-study" class="outline-button">Go back</button><button id="confirm-self-study" class="primary-button">Start protected session</button></div></div></div>
     <div id="counseling-modal" class="modal-overlay hidden"><div class="modal-content counseling-content"><span class="eyebrow">A short reset</span><h2>Something pulled you away.</h2><p id="counseling-copy">You opened a configured social site during a focus session. What would help now?</p><div class="choice-stack"><button class="choice-button" data-counseling-choice="resume"><strong>Resume</strong><small>Return to the task with a smaller next step.</small></button><button class="choice-button" data-counseling-choice="break"><strong>Take a break</strong><small>Pause the session and come back deliberately.</small></button><button class="choice-button" data-counseling-choice="end"><strong>End the session</strong><small>Close it without turning this into a judgment.</small></button></div></div></div>
     <script src="Part_2.js"></script>
 </body>

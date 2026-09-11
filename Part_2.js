@@ -96,6 +96,35 @@ function startFocus() {
         saveState();
     }, 1000);
 }
+function showSelfStudyWarning() { $('self-study-warning').classList.remove('hidden'); }
+async function beginSelfStudy() {
+    $('self-study-warning').classList.add('hidden');
+    $('mode-picker').classList.add('hidden');
+    $('app-shell').classList.remove('hidden');
+    startFocus();
+    switchView('monitor-view');
+    try {
+        await document.documentElement.requestFullscreen();
+        if (navigator.keyboard?.lock) await navigator.keyboard.lock(['Escape']);
+    } catch (error) {
+        addEvent('actioned', 'Self-study mode', 'Fullscreen request was unavailable', 'The browser or host did not grant fullscreen access.', 'Session continues with visible warning');
+    }
+}
+function chooseTutorMode() {
+    $('mode-picker').classList.add('hidden');
+    $('app-shell').classList.remove('hidden');
+    switchView('learn-view');
+    addEvent('actioned', 'Mode chooser', 'AI tutor mode selected', 'The learner chose the learning desk instead of protected fullscreen.', 'Tutor workspace opened');
+}
+async function emergencyExit() {
+    if (!state.sessionActive) return;
+    endFocus('Emergency exit requested with the I key');
+    if (document.fullscreenElement) {
+        try { await document.exitFullscreen(); } catch (error) { /* Host may deny the request. */ }
+    }
+    if (navigator.keyboard?.unlock) navigator.keyboard.unlock();
+    switchView('overview-view');
+}
 function endFocus(reason = 'Focus session ended by user') {
     if (!state.sessionActive) return;
     state.sessionActive = false;
@@ -153,8 +182,12 @@ function exportEvents() {
 
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => switchView(button.dataset.view)));
-    $('start-focus-btn').addEventListener('click', () => { startFocus(); switchView('monitor-view'); });
-    $('monitor-focus-btn').addEventListener('click', startFocus);
+    $('choose-tutor').addEventListener('click', chooseTutorMode);
+    $('choose-self-study').addEventListener('click', showSelfStudyWarning);
+    $('cancel-self-study').addEventListener('click', () => $('self-study-warning').classList.add('hidden'));
+    $('confirm-self-study').addEventListener('click', beginSelfStudy);
+    $('start-focus-btn').addEventListener('click', showSelfStudyWarning);
+    $('monitor-focus-btn').addEventListener('click', showSelfStudyWarning);
     $('stop-focus-btn').addEventListener('click', () => endFocus());
     $('simulate-interruption').addEventListener('click', observeSocial);
     $('simulate-study').addEventListener('click', observeStudyTool);
@@ -166,5 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
     $('policy-form').addEventListener('submit', event => { event.preventDefault(); state.policy = { language: $('preferred-language').value, subject: $('primary-subject').value.trim() || 'General study', focusGoal: Number($('focus-goal-input').value) || 120, dailyLimit: Number($('daily-limit').value) || 0, strictness: $('strictness').value, counseling: $('counseling-style').value, overnight: $('overnight-rule').checked, escalation: $('escalation-rule').checked }; saveState(); addEvent('actioned', 'Policy editor', 'Policy settings updated by learner', 'The user explicitly approved the new policy values.', 'Policy saved locally'); $('policy-saved').textContent = 'Saved locally'; setTimeout(() => $('policy-saved').textContent = '', 2400); });
     $('export-events').addEventListener('click', exportEvents);
     $('clear-events').addEventListener('click', () => { if (confirm('Delete the local event record? This cannot be undone.')) { state.events = []; saveState(); renderAll(); } });
+    document.addEventListener('keydown', event => {
+        if (event.key.toLowerCase() === 'i' && state.sessionActive) {
+            event.preventDefault();
+            emergencyExit();
+        }
+    });
     renderAll();
 });
