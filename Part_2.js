@@ -43,6 +43,7 @@ async function startSession() {
     $('self-status').textContent = 'Session active. Stay with your task.';
     $('start-session').classList.add('hidden');
     show('end-session');
+    electronIpc?.send('enter-protected-session');
     try {
         await document.documentElement.requestFullscreen();
         if (navigator.keyboard?.lock) await navigator.keyboard.lock(['Escape']);
@@ -59,6 +60,7 @@ async function finishSession(message = 'Session finished.') {
     if (!sessionRunning) return;
     clearInterval(timerId);
     sessionRunning = false;
+    electronIpc?.send('exit-protected-session');
     localStorage.setItem(HISTORY_KEY, JSON.stringify({ finishedAt: new Date().toISOString(), remaining: secondsLeft }));
     if (document.fullscreenElement) {
         try { await document.exitFullscreen(); } catch (error) { /* Fullscreen may already be closed. */ }

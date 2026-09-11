@@ -28,6 +28,17 @@ app.whenReady().then(() => {
     mainWindow.setFullScreen(!isKiosk);
   });
 
+  mainWindow.webContents.on('ipc-message', (_event, channel) => {
+    if (channel === 'enter-protected-session') {
+      mainWindow.setFullScreen(true);
+      mainWindow.setKiosk(true);
+    }
+    if (channel === 'exit-protected-session') {
+      mainWindow.setKiosk(false);
+      mainWindow.setFullScreen(false);
+    }
+  });
+
   // L exits the protected fullscreen session from anywhere in the desktop app.
   globalShortcut.register('L', () => {
     mainWindow.webContents.send('force-exit-self-study');
