@@ -1,706 +1,367 @@
-<<<<<<< HEAD
-let timer = null;
-let targetTime = 0;
-let secondsLeft = 0;
-let isRunning = false;
-let tabSwitchAlerts = 0;
+// --- GLOBAL STATE ---
+let timerInterval;
+let timeLeft = 25 * 60; 
+let isPaused = true; 
+let currentSessionChat = [];
+let currentMode = '';
+let fileContext = '';
+let sessionActuallyInteracted = false; 
 
-let uploadedNotesSelf = "";
-let uploadedNotesAi = "";
-let currentMode = "self";
-let secretUnlocked = false;
-
-document.addEventListener('DOMContentLoaded', () => {
-  const subInput = document.getElementById('subjectInput');
-  if (subInput) {
-    subInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') initiateStart();
-    });
-  }
-
-  // File listener for Self-Study Mode
-  const fileInputSelf = document.getElementById('notesFileInputSelf');
-  if (fileInputSelf) {
-    fileInputSelf.addEventListener('change', (e) => {
-      handleFileUpload(e.target.files[0], (text) => { uploadedNotesSelf = text; }, 'fileNameDisplaySelf');
-    });
-  }
-
-  // File listener for AI Tutor Mode
-  const fileInputAi = document.getElementById('notesFileInputAi');
-  if (fileInputAi) {
-    fileInputAi.addEventListener('change', (e) => {
-      handleFileUpload(e.target.files[0], (text) => { uploadedNotesAi = text; }, 'fileNameDisplayAi');
-    });
-  }
-});
-
-// SECRET UNLOCK KEY (L / l)
-document.addEventListener('keydown', (e) => {
-  if (isRunning && currentMode === 'self') {
-    if (e.key === 'l' || e.key === 'L') {
-      secretUnlocked = true;
-      unlockScreenAndExit();
-    }
-  }
-});
-
-// BLOCK TAB CLOSING / ALT+F4 WITH BROWSER WARNING
-window.addEventListener('beforeunload', (e) => {
-  if (isRunning && currentMode === 'self' && !secretUnlocked) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
-});
-
-function handleFileUpload(file, textSetter, displayId) {
-  const display = document.getElementById(displayId);
-  if (file) {
-    display.textContent = file.name;
-    const reader = new FileReader();
-    reader.onload = (event) => textSetter(event.target.result);
-    reader.readAsText(file);
-  } else {
-    textSetter("");
-    display.textContent = "No file attached";
-  }
-}
-
-// NAVIGATION BETWEEN SCREENS
-function selectMode(mode) {
-  currentMode = mode;
-  document.getElementById('landingScreen').classList.add('hidden');
-  document.getElementById('appScreen').classList.remove('hidden');
-
-  const selfView = document.getElementById('selfStudyView');
-  const aiView = document.getElementById('aiTutorView');
-
-  if (mode === 'self') {
-    selfView.classList.remove('hidden');
-    aiView.classList.add('hidden');
-  } else {
-    aiView.classList.remove('hidden');
-    selfView.classList.add('hidden');
-  }
-}
-
-function backToLanding() {
-  resetTimer();
-  unlockScreenAndExit();
-  document.getElementById('appScreen').classList.add('hidden');
-  document.getElementById('landingScreen').classList.remove('hidden');
-}
-
-function toggleInputs(disabled) {
-  document.getElementById('hrsInput').disabled = disabled;
-  document.getElementById('minsInput').disabled = disabled;
-  document.getElementById('secsInput').disabled = disabled;
-  document.getElementById('subjectInput').disabled = disabled;
-}
-
-function updateClock(totalSecs) {
-  const h = Math.floor(totalSecs / 3600);
-  const m = Math.floor((totalSecs % 3600) / 60);
-  const s = totalSecs % 60;
-  const fmt = num => String(num).padStart(2, '0');
-  
-  document.getElementById('timerDisplay').textContent = 
-    h > 0 ? `${fmt(h)}:${fmt(m)}:${fmt(s)}` : `${fmt(m)}:${fmt(s)}`;
-}
-
-// START BUTTON CLICK TRIGGER
-async function initiateStart() {
-  if (isRunning) return;
-
-  if (currentMode === 'self') {
-    secretUnlocked = false;
-    alert("Now your screen will be locked till you have completed your study.");
+// --- HISTORY & SIDEBAR LOGIC ---
+function loadHistory() {
+    const history = JSON.parse(localStorage.getItem('study_history')) || [];
+    const selfStudyLog = document.getElementById('self-study-log');
+    const aiTutorLog = document.getElementById('ai-tutor-log');
     
-    if (document.documentElement.requestFullscreen) {
-      try {
-        await document.documentElement.requestFullscreen();
-        if ('keyboard' in navigator && 'lock' in navigator.keyboard) {
-          await navigator.keyboard.lock(['Escape']);
-        }
-      } catch (err) {
-        console.log("Fullscreen/Keyboard lock error:", err);
-      }
-    }
-  }
+    if (!selfStudyLog || !aiTutorLog) return;
+    
+    selfStudyLog.innerHTML = '';
+    aiTutorLog.innerHTML = '';
 
-  startTimer();
+    let hasSelfStudy = false;
+    let hasAiTutor = false;
+
+    history.forEach((item) => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `<div><b>${item.time}</b></div><div style="font-size:0.8rem; color:#94a3b8;">${item.detail || 'Completed'}</div>`;
+        
+        if (item.mode === 'Self-Study') {
+            hasSelfStudy = true;
+            selfStudyLog.appendChild(div);
+        } else if (item.mode === 'AI Tutor') {
+            hasAiTutor = true;
+            div.onclick = () => recallAISession(item.chatLog);
+            aiTutorLog.appendChild(div);
+        }
+    });
+
+    const selfSection = document.getElementById('self-study-section');
+    const aiSection = document.getElementById('ai-tutor-section');
+    
+    if (hasSelfStudy) selfSection.classList.remove('hidden');
+    else selfSection.classList.add('hidden');
+
+    if (hasAiTutor) aiSection.classList.remove('hidden');
+    else aiSection.classList.add('hidden');
+}
+
+function saveToHistory(modeName, detail = null) {
+    const history = JSON.parse(localStorage.getItem('study_history')) || [];
+    const record = {
+        mode: modeName,
+        time: new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    };
+    
+    if (modeName === 'Self-Study') record.detail = detail;
+    if (modeName === 'AI Tutor') record.chatLog = [...currentSessionChat];
+
+    history.unshift(record);
+    localStorage.setItem('study_history', JSON.stringify(history));
+    loadHistory();
+}
+
+// --- TIMER CONTROLS ---
+function updateTimerDisplay() {
+    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+    const s = (timeLeft % 60).toString().padStart(2, '0');
+    const display = document.getElementById('timer-display');
+    if (display) display.innerText = `${m}:${s}`;
 }
 
 function startTimer() {
-  if (isRunning) return;
-
-  if (secondsLeft === 0) {
-    const h = parseInt(document.getElementById('hrsInput').value) || 0;
-    const m = parseInt(document.getElementById('minsInput').value) || 0;
-    const s = parseInt(document.getElementById('secsInput').value) || 0;
-    secondsLeft = h * 3600 + m * 60 + s;
-  }
-
-  if (secondsLeft <= 0) return;
-
-  targetTime = Date.now() + secondsLeft * 1000;
-  timer = setInterval(tick, 200);
-  isRunning = true;
-  toggleInputs(true);
+    clearInterval(timerInterval);
+    isPaused = false;
+    sessionActuallyInteracted = true; 
+    const pauseBtn = document.getElementById('pause-btn');
+    if (pauseBtn) pauseBtn.innerText = "Pause";
+    
+    timerInterval = setInterval(() => {
+        if (!isPaused && timeLeft > 0) {
+            timeLeft--;
+            updateTimerDisplay();
+        } else if (timeLeft === 0) {
+            clearInterval(timerInterval);
+            alert("Focus Sprint Complete!");
+            endSession('Self-Study');
+        }
+    }, 1000);
 }
 
 function pauseTimer() {
-  if (!isRunning) return;
-  clearInterval(timer);
-  secondsLeft = Math.max(0, Math.round((targetTime - Date.now()) / 1000));
-  isRunning = false;
-}
-
-function skipTimer() {
-  secretUnlocked = true;
-  clearInterval(timer);
-  isRunning = false;
-  secondsLeft = 0;
-  updateClock(0);
-  toggleInputs(false);
-
-  unlockScreenAndExit();
-
-  if (document.getElementById('soundToggle').checked) {
-    playFinishSound();
-  }
-
-  handleSessionEnd();
+    if (isPaused) {
+        startTimer();
+    } else {
+        isPaused = true;
+        const pauseBtn = document.getElementById('pause-btn');
+        if (pauseBtn) pauseBtn.innerText = "Resume";
+    }
 }
 
 function resetTimer() {
-  clearInterval(timer);
-  isRunning = false;
-  secondsLeft = 0;
-  updateClock(0);
-  toggleInputs(false);
-  document.getElementById('postSessionCard').classList.add('hidden');
-  document.getElementById('distractionOverlay').classList.add('hidden');
+    isPaused = true;
+    clearInterval(timerInterval);
+    timeLeft = 25 * 60;
+    updateTimerDisplay();
+    const pauseBtn = document.getElementById('pause-btn');
+    if (pauseBtn) pauseBtn.innerText = "Start";
 }
 
-function tick() {
-  const remaining = Math.max(0, Math.round((targetTime - Date.now()) / 1000));
-  updateClock(remaining);
-
-  if (remaining <= 0) {
-    secretUnlocked = true;
-    clearInterval(timer);
-    isRunning = false;
-    secondsLeft = 0;
-    toggleInputs(false);
-
-    unlockScreenAndExit();
-
-    if (document.getElementById('soundToggle').checked) {
-      playFinishSound();
-    }
-
-    handleSessionEnd();
-  }
+function adjustTimer() {
+    const modal = document.getElementById('time-adjust-modal');
+    if (modal) modal.classList.remove('hidden');
 }
-
-function playFinishSound() {
-  try {
-    const vol = parseFloat(document.getElementById('volumeControl').value) || 0.2;
-    if (vol === 0) return;
-
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
-
-    gain.gain.setValueAtTime(vol, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.8);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.8);
-  } catch (e) {}
-}
-
-function handleSessionEnd() {
-  const postCard = document.getElementById('postSessionCard');
-  postCard.classList.remove('hidden');
-}
-
-function unlockScreenAndExit() {
-  if ('keyboard' in navigator && 'unlock' in navigator.keyboard) {
-    navigator.keyboard.unlock();
-  }
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  }
-  document.getElementById('distractionOverlay').classList.add('hidden');
-}
-
-// DISTRACTION & LOCK SCREEN LISTENERS (Self-Study Mode Only)
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && isRunning && currentMode === 'self' && !secretUnlocked) {
-    triggerDistractionAlert();
-  }
-});
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && isRunning && currentMode === 'self' && !secretUnlocked) {
-    triggerDistractionAlert();
-  }
-});
-
-function triggerDistractionAlert() {
-  // Pause the countdown timer during distraction
-  if (isRunning) {
-    pauseTimer();
-    isRunning = true; 
-  }
-
-  tabSwitchAlerts++;
-  document.getElementById('distractionCountDisplay').textContent = tabSwitchAlerts;
-  document.getElementById('distractionOverlay').classList.remove('hidden');
-
-  try {
-    const vol = parseFloat(document.getElementById('volumeControl').value) || 0.2;
-    if (vol > 0) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, ctx.currentTime);
-      osc.frequency.setValueAtTime(110, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(vol * 0.5, ctx.currentTime);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
-    }
-  } catch (e) {}
-}
-
-// RESUME SPRINT & RE-ENTER FULLSCREEN WHEN BUTTON IS CLICKED
-function dismissShield() {
-  document.getElementById('distractionOverlay').classList.add('hidden');
-  
-  if (currentMode === 'self' && !secretUnlocked) {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-
-    isRunning = false;
-    startTimer();
-  }
-}
-
-// API CALL: Mode 1 Active Recall
-async function fetchSelfStudyRecall() {
-  const topic = document.getElementById('subjectInput').value.trim() || 'General Study';
-  const output = document.getElementById('aiQuizOutputSelf');
-  output.textContent = 'Generating active recall evaluation...';
-
-  let promptMessage = "";
-  if (uploadedNotesSelf.trim().length > 0) {
-    const snippet = uploadedNotesSelf.slice(0, 2500);
-    promptMessage = `Act as an expert tutor. The student finished studying "${topic}". Here are their study notes:\n\n"""\n${snippet}\n"""\n\nBased strictly on these notes, generate 2 active recall questions (with detailed answers) and 1 short motivational sentence.`;
-  } else {
-    promptMessage = `Act as an expert tutor. The student finished studying "${topic}". Generate 2 specific active recall questions (with detailed answers) on this topic, and 1 short motivational sentence.`;
-  }
-
-  await callOllama(promptMessage, output);
-}
-
-// API CALL: Mode 2 AI Tutor (Learn First + MCQs)
-async function fetchAiTutorLesson() {
-  const topic = document.getElementById('aiTutorTopicInput').value.trim() || 'General Science';
-  const output = document.getElementById('aiTutorOutput');
-  output.textContent = 'AI Tutor is generating your lesson and practice quiz...';
-
-  let promptMessage = "";
-  if (uploadedNotesAi.trim().length > 0) {
-    const snippet = uploadedNotesAi.slice(0, 2500);
-    promptMessage = `Act as an AI Tutor. Teach me about "${topic}" using these notes:\n\n"""\n${snippet}\n"""\n\n1. Provide a concise 3-bullet point lesson summary.\n2. Create 3 Multiple Choice Questions (MCQs) with options (A, B, C, D) and reveal correct answers at the bottom.`;
-  } else {
-    promptMessage = `Act as an AI Tutor. Teach me about "${topic}".\n\n1. Provide a concise 3-bullet point lesson summary explaining main concepts.\n2. Create 3 Multiple Choice Questions (MCQs) with options (A, B, C, D) and reveal correct answers at the bottom.`;
-  }
-
-  await callOllama(promptMessage, output);
-}
-
-async function callOllama(promptMessage, outputElement) {
-  try {
-    const res = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3.2',
-        prompt: promptMessage,
-        stream: false
-      })
-    });
-
-    const data = await res.json();
-    outputElement.textContent = data.response;
-  } catch (err) {
-    outputElement.textContent = 'Ollama connection failed. Run "$env:OLLAMA_ORIGINS="*"; ollama serve" in PowerShell.';
-  }
-=======
-let timer = null;
-let targetTime = 0;
-let secondsLeft = 0;
-let isRunning = false;
-let tabSwitchAlerts = 0;
-
-let uploadedNotesSelf = "";
-let uploadedNotesAi = "";
-let currentMode = "self";
-let secretUnlocked = false;
 
 document.addEventListener('DOMContentLoaded', () => {
-  const subInput = document.getElementById('subjectInput');
-  if (subInput) {
-    subInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') initiateStart();
-    });
-  }
+    const okBtn = document.getElementById('modal-ok-btn');
+    const cancelBtn = document.getElementById('modal-cancel-btn');
+    const input = document.getElementById('session-minutes-input');
 
-  // File listener for Self-Study Mode
-  const fileInputSelf = document.getElementById('notesFileInputSelf');
-  if (fileInputSelf) {
-    fileInputSelf.addEventListener('change', (e) => {
-      handleFileUpload(e.target.files[0], (text) => { uploadedNotesSelf = text; }, 'fileNameDisplaySelf');
-    });
-  }
-
-  // File listener for AI Tutor Mode
-  const fileInputAi = document.getElementById('notesFileInputAi');
-  if (fileInputAi) {
-    fileInputAi.addEventListener('change', (e) => {
-      handleFileUpload(e.target.files[0], (text) => { uploadedNotesAi = text; }, 'fileNameDisplayAi');
-    });
-  }
-});
-
-// SECRET UNLOCK KEY (L / l)
-document.addEventListener('keydown', (e) => {
-  if (isRunning && currentMode === 'self') {
-    if (e.key === 'l' || e.key === 'L') {
-      secretUnlocked = true;
-      unlockScreenAndExit();
+    if (okBtn) {
+        okBtn.onclick = () => {
+            const mins = parseInt(input.value, 10);
+            if (mins > 0) {
+                timeLeft = mins * 60;
+                updateTimerDisplay();
+            }
+            document.getElementById('time-adjust-modal').classList.add('hidden');
+        };
     }
-  }
+
+    if (cancelBtn) {
+        cancelBtn.onclick = () => {
+            document.getElementById('time-adjust-modal').classList.add('hidden');
+        };
+    }
+
+    loadHistory(); 
 });
-
-// BLOCK TAB CLOSING / ALT+F4 WITH BROWSER WARNING
-window.addEventListener('beforeunload', (e) => {
-  if (isRunning && currentMode === 'self' && !secretUnlocked) {
-    e.preventDefault();
-    e.returnValue = '';
-  }
-});
-
-function handleFileUpload(file, textSetter, displayId) {
-  const display = document.getElementById(displayId);
-  if (file) {
-    display.textContent = file.name;
-    const reader = new FileReader();
-    reader.onload = (event) => textSetter(event.target.result);
-    reader.readAsText(file);
-  } else {
-    textSetter("");
-    display.textContent = "No file attached";
-  }
+// --- UI & LOCKDOWN ---
+function switchView(showId) {
+    document.querySelectorAll('.app-container, .active-view').forEach(el => el.classList.add('hidden'));
+    document.getElementById(showId).classList.remove('hidden');
 }
 
-// NAVIGATION BETWEEN SCREENS
-function selectMode(mode) {
-  currentMode = mode;
-  document.getElementById('landingScreen').classList.add('hidden');
-  document.getElementById('appScreen').classList.remove('hidden');
+async function startSelfStudy() {
+    currentMode = 'Self-Study';
+    sessionActuallyInteracted = false; 
+    switchView('study-view');
+    timeLeft = 25 * 60;
+    isPaused = true; 
+    updateTimerDisplay();
+    const pauseBtn = document.getElementById('pause-btn');
+    if (pauseBtn) pauseBtn.innerText = "Start";
 
-  const selfView = document.getElementById('selfStudyView');
-  const aiView = document.getElementById('aiTutorView');
-
-  if (mode === 'self') {
-    selfView.classList.remove('hidden');
-    aiView.classList.add('hidden');
-  } else {
-    aiView.classList.remove('hidden');
-    selfView.classList.add('hidden');
-  }
-}
-
-function backToLanding() {
-  resetTimer();
-  unlockScreenAndExit();
-  document.getElementById('appScreen').classList.add('hidden');
-  document.getElementById('landingScreen').classList.remove('hidden');
-}
-
-function toggleInputs(disabled) {
-  document.getElementById('hrsInput').disabled = disabled;
-  document.getElementById('minsInput').disabled = disabled;
-  document.getElementById('secsInput').disabled = disabled;
-  document.getElementById('subjectInput').disabled = disabled;
-}
-
-function updateClock(totalSecs) {
-  const h = Math.floor(totalSecs / 3600);
-  const m = Math.floor((totalSecs % 3600) / 60);
-  const s = totalSecs % 60;
-  const fmt = num => String(num).padStart(2, '0');
-  
-  document.getElementById('timerDisplay').textContent = 
-    h > 0 ? `${fmt(h)}:${fmt(m)}:${fmt(s)}` : `${fmt(m)}:${fmt(s)}`;
-}
-
-// START BUTTON CLICK TRIGGER
-async function initiateStart() {
-  if (isRunning) return;
-
-  if (currentMode === 'self') {
-    secretUnlocked = false;
-    alert("Now your screen will be locked till you have completed your study.");
-    
-    if (document.documentElement.requestFullscreen) {
-      try {
+    try {
         await document.documentElement.requestFullscreen();
-        if ('keyboard' in navigator && 'lock' in navigator.keyboard) {
-          await navigator.keyboard.lock(['Escape']);
+        if ('keyboard' in navigator && navigator.keyboard.lock) {
+            await navigator.keyboard.lock(['Escape']);
         }
-      } catch (err) {
-        console.log("Fullscreen/Keyboard lock error:", err);
-      }
-    }
-  }
-
-  startTimer();
+    } catch (err) {}
 }
 
-function startTimer() {
-  if (isRunning) return;
-
-  if (secondsLeft === 0) {
-    const h = parseInt(document.getElementById('hrsInput').value) || 0;
-    const m = parseInt(document.getElementById('minsInput').value) || 0;
-    const s = parseInt(document.getElementById('secsInput').value) || 0;
-    secondsLeft = h * 3600 + m * 60 + s;
-  }
-
-  if (secondsLeft <= 0) return;
-
-  targetTime = Date.now() + secondsLeft * 1000;
-  timer = setInterval(tick, 200);
-  isRunning = true;
-  toggleInputs(true);
-}
-
-function pauseTimer() {
-  if (!isRunning) return;
-  clearInterval(timer);
-  secondsLeft = Math.max(0, Math.round((targetTime - Date.now()) / 1000));
-  isRunning = false;
-}
-
-function skipTimer() {
-  secretUnlocked = true;
-  clearInterval(timer);
-  isRunning = false;
-  secondsLeft = 0;
-  updateClock(0);
-  toggleInputs(false);
-
-  unlockScreenAndExit();
-
-  if (document.getElementById('soundToggle').checked) {
-    playFinishSound();
-  }
-
-  handleSessionEnd();
-}
-
-function resetTimer() {
-  clearInterval(timer);
-  isRunning = false;
-  secondsLeft = 0;
-  updateClock(0);
-  toggleInputs(false);
-  document.getElementById('postSessionCard').classList.add('hidden');
-  document.getElementById('distractionOverlay').classList.add('hidden');
-}
-
-function tick() {
-  const remaining = Math.max(0, Math.round((targetTime - Date.now()) / 1000));
-  updateClock(remaining);
-
-  if (remaining <= 0) {
-    secretUnlocked = true;
-    clearInterval(timer);
-    isRunning = false;
-    secondsLeft = 0;
-    toggleInputs(false);
-
-    unlockScreenAndExit();
-
-    if (document.getElementById('soundToggle').checked) {
-      playFinishSound();
-    }
-
-    handleSessionEnd();
-  }
-}
-
-function playFinishSound() {
-  try {
-    const vol = parseFloat(document.getElementById('volumeControl').value) || 0.2;
-    if (vol === 0) return;
-
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-    osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
-
-    gain.gain.setValueAtTime(vol, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.8);
-
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + 0.8);
-  } catch (e) {}
-}
-
-function handleSessionEnd() {
-  const postCard = document.getElementById('postSessionCard');
-  postCard.classList.remove('hidden');
-}
-
-function unlockScreenAndExit() {
-  if ('keyboard' in navigator && 'unlock' in navigator.keyboard) {
-    navigator.keyboard.unlock();
-  }
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  }
-  document.getElementById('distractionOverlay').classList.add('hidden');
-}
-
-// DISTRACTION & LOCK SCREEN LISTENERS (Self-Study Mode Only)
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && isRunning && currentMode === 'self' && !secretUnlocked) {
-    triggerDistractionAlert();
-  }
+    const studyView = document.getElementById('study-view');
+    if (!studyView.classList.contains('hidden') && !document.fullscreenElement) {
+        clearInterval(timerInterval);
+        alert("⚠️ Lockdown Breach Detected! Session terminated early.");
+        endSession('Self-Study');
+    }
 });
 
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && isRunning && currentMode === 'self' && !secretUnlocked) {
-    triggerDistractionAlert();
-  }
+function startAITutor() {
+    currentMode = 'AI Tutor';
+    currentSessionChat = [];
+    fileContext = '';
+    document.getElementById('ai-chat-box').innerHTML = '';
+    const dropZone = document.getElementById('file-drop-area');
+    if(dropZone) dropZone.innerHTML = `📂 Drag & Drop Study Materials Here OR <label class="file-browse-btn">Browse Files <input type="file" id="file-input" style="display: none;" onchange="handleFileSelect(this)"></label>`;
+    switchView('ai-view');
+}
+
+function openPostSessionModal() {
+    if (currentSessionChat.length === 0) {
+        finalizeAndExit(); 
+        return;
+    }
+    const modal = document.getElementById('post-session-modal');
+    document.getElementById('mcq-container').classList.add('hidden');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function finalizeAndExit() {
+    document.getElementById('post-session-modal').classList.add('hidden');
+    endSession('AI Tutor');
+}
+
+async function endSession(modeName) {
+    if (document.fullscreenElement) {
+        try { await document.exitFullscreen(); } catch(e) {}
+    }
+    if ('keyboard' in navigator && navigator.keyboard.unlock) {
+        navigator.keyboard.unlock();
+    }
+    clearInterval(timerInterval);
+    
+    if (modeName === 'Self-Study' && sessionActuallyInteracted) {
+        const durationText = document.getElementById('timer-display').innerText;
+        saveToHistory('Self-Study', `Finished (${durationText} left)`);
+    } else if (modeName === 'AI Tutor' && currentSessionChat.length > 0) {
+        saveToHistory('AI Tutor');
+    }
+    
+    switchView('dashboard-view');
+    loadHistory(); 
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'l' && !document.getElementById('study-view').classList.contains('hidden')) {
+        document.getElementById('emergency-exit').classList.toggle('hidden');
+    }
 });
 
-function triggerDistractionAlert() {
-  // Pause the countdown timer during distraction
-  if (isRunning) {
-    pauseTimer();
-    isRunning = true; 
-  }
-
-  tabSwitchAlerts++;
-  document.getElementById('distractionCountDisplay').textContent = tabSwitchAlerts;
-  document.getElementById('distractionOverlay').classList.remove('hidden');
-
-  try {
-    const vol = parseFloat(document.getElementById('volumeControl').value) || 0.2;
-    if (vol > 0) {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, ctx.currentTime);
-      osc.frequency.setValueAtTime(110, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(vol * 0.5, ctx.currentTime);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
+// --- AI TUTOR & FAST CONCISE LLM ---
+function handleFileSelect(input) {
+    if (input.files.length > 0) {
+        const file = input.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            fileContext = e.target.result;
+            document.getElementById('file-drop-area').innerHTML = `📄 Loaded File: <b>${file.name}</b> (Context active)`;
+        };
+        reader.readAsText(file);
     }
-  } catch (e) {}
 }
 
-// RESUME SPRINT & RE-ENTER FULLSCREEN WHEN BUTTON IS CLICKED
-function dismissShield() {
-  document.getElementById('distractionOverlay').classList.add('hidden');
-  
-  if (currentMode === 'self' && !secretUnlocked) {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen().catch(() => {});
+async function askOllama() {
+    const inputEl = document.getElementById('ai-prompt');
+    const chatBox = document.getElementById('ai-chat-box');
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    chatBox.innerHTML += `<div class="user-msg">${text}</div>`;
+    currentSessionChat.push({ role: 'user', content: text });
+    inputEl.value = '';
+    
+    const loadingId = 'loading-' + Date.now();
+    chatBox.innerHTML += `<div id="${loadingId}" class="ai-msg"><b>Tutor:</b> Thinking...</div>`;
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const systemInstruction = "You are a concise, high-efficiency AI tutor. Keep explanations short, punchy, and structured with clear bullet points. Avoid overly long paragraphs so the student can learn quickly.";
+    const fullPrompt = `${systemInstruction}\n\n${fileContext ? 'Context:\n' + fileContext + '\n\n' : ''}Student Question: ${text}`;
+
+    try {
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                model: 'llama3.2', 
+                prompt: fullPrompt, 
+                stream: false,
+                options: { num_predict: 250 } 
+            })
+        });
+        const data = await response.json();
+        document.getElementById(loadingId).innerHTML = `<b>Tutor:</b><br>${data.response.replace(/\n/g, '<br>')}`;
+        currentSessionChat.push({ role: 'ai', content: data.response });
+    } catch (error) {
+        document.getElementById(loadingId).innerHTML = `<b style="color:red;">Error:</b> Could not reach local Ollama instance on port 11434.`;
     }
-
-    isRunning = false;
-    startTimer();
-  }
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 
-// API CALL: Mode 1 Active Recall
-async function fetchSelfStudyRecall() {
-  const topic = document.getElementById('subjectInput').value.trim() || 'General Study';
-  const output = document.getElementById('aiQuizOutputSelf');
-  output.textContent = 'Generating active recall evaluation...';
+// --- MCQ GENERATOR FEATURE ---
+async function startMCQChallenge() {
+    const mcqContainer = document.getElementById('mcq-container');
+    const qEl = document.getElementById('mcq-question');
+    const optsEl = document.getElementById('mcq-options');
+    const feedbackEl = document.getElementById('mcq-feedback');
 
-  let promptMessage = "";
-  if (uploadedNotesSelf.trim().length > 0) {
-    const snippet = uploadedNotesSelf.slice(0, 2500);
-    promptMessage = `Act as an expert tutor. The student finished studying "${topic}". Here are their study notes:\n\n"""\n${snippet}\n"""\n\nBased strictly on these notes, generate 2 active recall questions (with detailed answers) and 1 short motivational sentence.`;
-  } else {
-    promptMessage = `Act as an expert tutor. The student finished studying "${topic}". Generate 2 specific active recall questions (with detailed answers) on this topic, and 1 short motivational sentence.`;
-  }
+    mcqContainer.classList.remove('hidden');
+    qEl.innerText = "Generating MCQ based on your session...";
+    optsEl.innerHTML = "";
+    feedbackEl.innerText = "";
 
-  await callOllama(promptMessage, output);
+    const chatHistorySummary = currentSessionChat.map(m => `${m.role}: ${m.content}`).join('\n');
+    const prompt = `Based on this study session conversation, generate ONE multiple-choice question (MCQ) to test the student. 
+    Format your response STRICTLY as JSON with this exact structure:
+    {
+      "question": "The question text here",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correct": 0
+    }
+    where 'correct' is the 0-based index of the correct option. Do not include markdown code blocks around the JSON if possible, just raw JSON.
+    
+    Session History:
+    ${chatHistorySummary}`;
+
+    try {
+        const response = await fetch('http://localhost:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'llama3.2', prompt: prompt, stream: false })
+        });
+        const data = await response.json();
+        
+        let cleanJsonStr = data.response.trim();
+        if (cleanJsonStr.startsWith('```json')) cleanJsonStr = cleanJsonStr.replace(/^```json/, '').replace(/```$/, '').trim();
+        if (cleanJsonStr.startsWith('```')) cleanJsonStr = cleanJsonStr.replace(/^```/, '').replace(/```$/, '').trim();
+        
+        const mcqData = JSON.parse(cleanJsonStr);
+
+        qEl.innerText = mcqData.question;
+        optsEl.innerHTML = "";
+        
+        mcqData.options.forEach((opt, index) => {
+            const btn = document.createElement('button');
+            btn.className = 'mcq-btn';
+            btn.innerText = opt;
+            btn.onclick = () => {
+                if (index === mcqData.correct) {
+                    feedbackEl.innerHTML = "✅ Correct! Great job mastering this concept.";
+                    feedbackEl.style.color = "#10b981";
+                } else {
+                    feedbackEl.innerHTML = `❌ Incorrect. The correct answer was: ${mcqData.options[mcqData.correct]}`;
+                    feedbackEl.style.color = "#ef4444";
+                }
+                Array.from(optsEl.children).forEach(b => b.disabled = true);
+            };
+            optsEl.appendChild(btn);
+        });
+
+    } catch (err) {
+        qEl.innerText = "Could not generate MCQ automatically. You can finish session now.";
+    }
 }
 
-// API CALL: Mode 2 AI Tutor (Learn First + MCQs)
-async function fetchAiTutorLesson() {
-  const topic = document.getElementById('aiTutorTopicInput').value.trim() || 'General Science';
-  const output = document.getElementById('aiTutorOutput');
-  output.textContent = 'AI Tutor is generating your lesson and practice quiz...';
-
-  let promptMessage = "";
-  if (uploadedNotesAi.trim().length > 0) {
-    const snippet = uploadedNotesAi.slice(0, 2500);
-    promptMessage = `Act as an AI Tutor. Teach me about "${topic}" using these notes:\n\n"""\n${snippet}\n"""\n\n1. Provide a concise 3-bullet point lesson summary.\n2. Create 3 Multiple Choice Questions (MCQs) with options (A, B, C, D) and reveal correct answers at the bottom.`;
-  } else {
-    promptMessage = `Act as an AI Tutor. Teach me about "${topic}".\n\n1. Provide a concise 3-bullet point lesson summary explaining main concepts.\n2. Create 3 Multiple Choice Questions (MCQs) with options (A, B, C, D) and reveal correct answers at the bottom.`;
-  }
-
-  await callOllama(promptMessage, output);
+function recallAISession(chatLog) {
+    if (!chatLog || chatLog.length === 0) return;
+    switchView('ai-view');
+    currentSessionChat = [...chatLog];
+    const chatBox = document.getElementById('ai-chat-box');
+    chatBox.innerHTML = chatLog.map(msg => 
+        msg.role === 'user' ? `<div class="user-msg">${msg.content}</div>` 
+                            : `<div class="ai-msg"><b>Tutor:</b><br>${msg.content.replace(/\n/g, '<br>')}</div>`
+    ).join('');
 }
 
-async function callOllama(promptMessage, outputElement) {
-  try {
-    const res = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama3.2',
-        prompt: promptMessage,
-        stream: false
-      })
-    });
-
-    const data = await res.json();
-    outputElement.textContent = data.response;
-  } catch (err) {
-    outputElement.textContent = 'Ollama connection failed. Run "$env:OLLAMA_ORIGINS="*"; ollama serve" in PowerShell.';
-  }
->>>>>>> d217a1011e718ad36c2068bf67092fe212522ba0
-}
+document.addEventListener('DOMContentLoaded', () => {
+    const dropZone = document.getElementById('file-drop-area');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    fileContext = evt.target.result;
+                    dropZone.innerHTML = `📄 Loaded File: <b>${file.name}</b> (Context active)`;
+                };
+                reader.readAsText(file);
+            }
+        });
+    }
+});
