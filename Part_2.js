@@ -21,6 +21,7 @@ function resetApp() {
     show('mode-picker');
     hide('tutor-view');
     hide('self-view');
+    hide('practice-panel');
 }
 function openTutor() {
     hide('mode-picker');
@@ -66,6 +67,7 @@ async function finishSession(message = 'Session finished.') {
     $('self-status').textContent = message;
     $('start-session').classList.remove('hidden');
     hide('end-session');
+    show('practice-panel');
 }
 async function emergencyExit() {
     if (!sessionRunning) return;
@@ -86,6 +88,7 @@ function answerLocally(question) {
     return 'Local Ollama is unavailable right now. Try again with Ollama running, or ask me to create a simple study step from your notes.';
 }
 function renderMaterials() {
+    if (!$('file-list')) return;
     $('file-list').innerHTML = studyMaterials.map((material, index) => `<div class="file-item"><span>${material.name}</span><button type="button" data-remove-file="${index}" aria-label="Remove ${material.name}">x</button></div>`).join('');
     document.querySelectorAll('[data-remove-file]').forEach(button => button.addEventListener('click', () => { studyMaterials.splice(Number(button.dataset.removeFile), 1); renderMaterials(); }));
 }
@@ -110,6 +113,41 @@ async function askOllama(question) {
     const data = await response.json();
     return data.response || 'Ollama returned an empty answer.';
 }
+async function generateQuiz() {
+    const topic = $('study-topic').value.trim();
+    const files = $('practice-file-input').files;
+    if (files.length) await addMaterials(files);
+    const materialContext = studyMaterials.length ? studyMaterials.map(material => `--- ${material.name} ---\n${material.content}`).join('\n') : 'No files were provided.';
+    if (!topic && !studyMaterials.length) { $('quiz-status').textContent = 'Add a file or write what you studied first.'; return; }
+    $('quiz-status').textContent = 'Local Ollama is creating your question...';
+    $('quiz-card').classList.remove('hidden');
+    $('quiz-question').textContent = 'Thinking...';
+    $('quiz-options').innerHTML = '';
+    $('quiz-feedback').textContent = '';
+    const prompt = `Create one fair multiple-choice question for a student. Use the topic and materials below. Return ONLY valid JSON with this exact shape: {"question":"...","options":["...","...","...","..."],"correct":0,"explanation":"..."}. correct must be a number from 0 to 3. Topic: ${topic || 'Use the attached study material'}\nMaterials:\n${materialContext}`;
+    try {
+        const response = await fetch('http://localhost:11434/api/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'llama3.2', prompt, stream: false, format: 'json', options: { num_predict: 350 } }) });
+        const data = await response.json();
+        const clean = data.response.trim().replace(/^```json\s*/, '').replace(/```$/, '').trim();
+        const quiz = JSON.parse(clean);
+        $('quiz-status').textContent = 'Question ready.';
+        $('quiz-question').textContent = quiz.question;
+        quiz.options.forEach((option, index) => {
+            const button = document.createElement('button');
+            button.className = 'quiz-option';
+            button.textContent = option;
+            button.addEventListener('click', () => {
+                document.querySelectorAll('.quiz-option').forEach(item => { item.disabled = true; });
+                $('quiz-feedback').textContent = index === quiz.correct ? `Correct. ${quiz.explanation}` : `Not quite. The answer is: ${quiz.options[quiz.correct]}. ${quiz.explanation}`;
+                $('quiz-feedback').className = `quiz-feedback ${index === quiz.correct ? 'correct' : 'incorrect'}`;
+            });
+            $('quiz-options').appendChild(button);
+        });
+    } catch (error) {
+        $('quiz-status').textContent = 'Ollama could not create the quiz. Check that llama3.2 is running.';
+        $('quiz-question').textContent = 'Try again when local AI is ready.';
+    }
+}
 async function checkOllama() {
     try { const response = await fetch('http://localhost:11434/api/tags'); $('ollama-status').textContent = response.ok ? 'Local AI: Ollama llama3.2 ready' : 'Local AI: start Ollama to answer'; }
     catch (error) { $('ollama-status').textContent = 'Local AI: offline until Ollama is running'; }
@@ -121,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('cancel-self-study').addEventListener('click', () => hide('self-study-warning'));
     $('start-session').addEventListener('click', () => show('self-study-warning'));
     $('end-session').addEventListener('click', () => finishSession());
+    $('generate-quiz').addEventListener('click', generateQuiz);
     $('change-mode').addEventListener('click', resetApp);
     $('tutor-back').addEventListener('click', resetApp);
     $('file-input').addEventListener('change', event => addMaterials(event.target.files));
